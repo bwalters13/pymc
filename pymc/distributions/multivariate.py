@@ -275,6 +275,48 @@ class MvNormal(Continuous):
             ok,
             msg="posdef",
         )
+    
+class MvSkewNormalRV(RandomVariable):
+    name = "multivariate_studentt"
+    ndim_supp = 1
+    ndims_params = [0, 1, 2]
+    dtype = "floatX"
+    _print_name = ("MvStudentT", "\\operatorname{MvStudentT}")
+
+    def _supp_shape_from_params(self, dist_params, param_shapes=None):
+        return supp_shape_from_ref_param_shape(
+            ndim_supp=self.ndim_supp,
+            dist_params=dist_params,
+            param_shapes=param_shapes,
+            ref_param_idx=1,
+        )
+
+    @classmethod
+    def rng_fn(cls, rng, alpha, mu, cov, size):
+        if size is None:
+            # When size is implicit, we need to broadcast parameters correctly,
+            # so that the MvNormal draws and the chisquare draws have the same number of batch dimensions.
+            # nu broadcasts mu and cov
+            if np.ndim(alpha) > max(mu.ndim - 1, cov.ndim - 2):
+                _, mu, cov = broadcast_params((alpha, mu, cov), ndims_params=cls.ndims_params)
+            # nu is broadcasted by either mu or cov
+            elif np.ndim(alpha) < max(mu.ndim - 1, cov.ndim - 2):
+                alpha, _, _ = broadcast_params((alpha, mu, cov), ndims_params=cls.ndims_params)
+
+        mv_samples = multivariate_normal.rng_fn(rng=rng, mean=np.zeros_like(mu), cov=cov_star, size=size)
+
+        aCa = alpha @ cov @ alpha
+        delta = (1/ np.sqrt(1 + aCa)) * cov @ alpha
+        cov_star = np.block([[np.ones(1), delta],
+                        [delta[:, None], cov]])
+        
+        x0 = mv_samples[:, 0]
+        x1 = mv_samples[:, 1:]
+        inds = x0 <= 0
+        x1[inds] = -x1[inds]
+        x1 = x1 + mu
+        return x1
+
 
 
 class MvStudentTRV(RandomVariable):
@@ -310,6 +352,124 @@ class MvStudentTRV(RandomVariable):
         chi2_samples = np.sqrt(rng.chisquare(nu, size=size) / nu)[..., None]
 
         return (mv_samples / chi2_samples) + mu
+    
+mv_skewnormal = MvSkewNormalRV()
+    
+class MvSkewNormal(Continuous):
+    r"""
+    Multivariate Student-T log-likelihood.
+
+    .. math::
+        f(\mathbf{x}| \nu,\mu,\Sigma) =
+        \frac
+            {\Gamma\left[(\nu+p)/2\right]}
+            {\Gamma(\nu/2)\nu^{p/2}\pi^{p/2}
+             \left|{\Sigma}\right|^{1/2}
+             \left[
+               1+\frac{1}{\nu}
+               ({\mathbf x}-{\mu})^T
+               {\Sigma}^{-1}({\mathbf x}-{\mu})
+             \right]^{-(\nu+p)/2}}
+
+    ========  =============================================
+    Support   :math:`x \in \mathbb{R}^p`
+    Mean      :math:`\mu` if :math:`\nu > 1` else undefined
+    Variance  :math:`\frac{\nu}{\mu-2}\Sigma`
+                  if :math:`\nu>2` else undefined
+    ========  =============================================
+
+    Parameters
+    ----------
+    nu : tensor_like of float
+        Degrees of freedom, should be a positive scalar.
+    Sigma : tensor_like of float, optional
+        Scale matrix. Use `scale` in new code.
+    mu : tensor_like of float, optional
+        Vector of means.
+    scale : tensor_like of float, optional
+        The scale matrix.
+    tau : tensor_like of float, optional
+        The precision matrix.
+    chol : tensor_like of float, optional
+        The cholesky factor of the scale matrix.
+    lower : bool, default=True
+        Whether the cholesky fatcor is given as a lower triangular matrix.
+    """
+    rv_op = mv_skewnormal
+
+    @classmethod
+    def dist(cls, alpha, *, Sigma=None, mu=0, scale=None, tau=None, chol=None, lower=True, **kwargs):
+        cov = kwargs.pop("cov", None)
+        if cov is not None:
+            warnings.warn(
+                "Use the scale argument to specify the scale matrix. "
+                "cov will be removed in future versions.",
+                FutureWarning,
+            )
+            scale = cov
+        if Sigma is not None:
+            if scale is not None:
+                raise ValueError("Specify only one of scale and Sigma")
+            scale = Sigma
+        alpha = pt.as_tensor_variable(floatX(alpha))
+        mu = pt.as_tensor_variable(floatX(mu))
+        aCa = pt.matmul(pt.matmul(alpha, cov), alpha)
+        delta = pt.matul((1/ pt.sqrt(1 + aCa)) * cov, alpha)
+        a = pt.concatenate((pt.ones(1), delta)).reshape((1, -1))
+        b = pt.concatenate((delta[:, None], cov), axis=1)
+        cov_star = pt.concatenate((a, b))
+        scale = cov_star
+        # PyTensor is stricter about the shape of mu, than PyMC used to be
+        mu, _ = pt.broadcast_arrays(mu, scale[..., -1])
+
+        return super().dist([alpha, mu, scale], **kwargs)
+
+    def moment(rv, size, alpha, mu, scale):
+        # mu is broadcasted to the potential length of scale in `dist`
+        mu, _ = pt.random.utils.broadcast_params([mu, alpha], ndims_params=[1, 0])
+        moment = mu
+        if not rv_size_is_none(size):
+            moment_size = pt.concatenate([size, [mu.shape[-1]]])
+            moment = pt.full(moment_size, moment)
+        return moment
+
+    def logp(value, alpha, mu, scale):
+        """
+        Calculate log-probability of Multivariate Student's T distribution
+        at specified value.
+
+        Parameters
+        ----------
+        value: numeric
+            Value for which log-probability is calculated.
+
+        Returns
+        -------
+        TensorVariable
+        """
+        mv_normal = pm.MvNormal.dist(mu=mu, cov=scale)
+
+        std_devs = pm.math.sqrt(pt.diag(scale)) + 0.1
+
+        omega = pt.diag(std_devs)
+
+        # # Calculate the log probability of the value under the multivariate normal distribution
+        log_prob_mv_normal = pm.logp(mv_normal, value - mu)
+
+        # # Calculate omega inverse
+        omega_inv = pt.nlinalg.pinv(omega)
+
+        # Calculate the argument for the standard normal CDF
+        arg_cdf = pm.math.sum(pm.math.dot(alpha.T, omega_inv)* (value - mu), axis=1)
+
+        # Instantiate the standard normal distribution for the CDF
+        std_normal = pm.Normal.dist(mu=0, sigma=1)
+
+        # Calculate the log CDF of the argument under the standard normal distribution
+        log_cdf_std_normal = pm.logcdf(std_normal, arg_cdf)
+
+        # Return the log of the skew-normal density
+        return pm.math.log(2) + log_prob_mv_normal + log_cdf_std_normal
 
 
 mv_studentt = MvStudentTRV()
