@@ -410,10 +410,10 @@ class MvSkewNormal(Continuous):
             scale = Sigma
         alpha = pt.as_tensor_variable(floatX(alpha))
         mu = pt.as_tensor_variable(floatX(mu))
-        aCa = pt.matmul(pt.matmul(alpha, cov), alpha)
-        delta = pt.matul((1/ pt.sqrt(1 + aCa)) * cov, alpha)
+        aCa = pt.matmul(pt.matmul(alpha, scale), alpha)
+        delta = pt.matmul((1/ pt.sqrt(1 + aCa)) * scale, alpha)
         a = pt.concatenate((pt.ones(1), delta)).reshape((1, -1))
-        b = pt.concatenate((delta[:, None], cov), axis=1)
+        b = pt.concatenate((delta[:, None], scale), axis=1)
         cov_star = pt.concatenate((a, b))
         scale = cov_star
         # PyTensor is stricter about the shape of mu, than PyMC used to be
