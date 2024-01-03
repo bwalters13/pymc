@@ -280,7 +280,7 @@ class MvNormal(Continuous):
 class MvSkewNormalRV(RandomVariable):
     name = "multivariate_skewnormal"
     ndim_supp = 1
-    ndims_params = [0, 1, 2]
+    ndims_params = [1, 1, 2]
     dtype = "floatX"
     _print_name = ("MvSkewNormal", "\\operatorname{MvSkewNormal}")
 
@@ -298,11 +298,7 @@ class MvSkewNormalRV(RandomVariable):
             # When size is implicit, we need to broadcast parameters correctly,
             # so that the MvNormal draws and the chisquare draws have the same number of batch dimensions.
             # nu broadcasts mu and cov
-            if np.ndim(alpha) > max(mu.ndim - 1, cov.ndim - 2):
-                _, mu, cov = broadcast_params((alpha, mu, cov), ndims_params=cls.ndims_params)
-            # nu is broadcasted by either mu or cov
-            elif np.ndim(alpha) < max(mu.ndim - 1, cov.ndim - 2):
-                alpha, _, _ = broadcast_params((alpha, mu, cov), ndims_params=cls.ndims_params)
+            alpha, mu, cov = broadcast_params((alpha, mu, cov), ndims_params=cls.ndims_params)
 
         mv_samples = multivariate_normal.rng_fn(rng=rng, mean=np.zeros_like(mu), cov=cov_star, size=size)
 
