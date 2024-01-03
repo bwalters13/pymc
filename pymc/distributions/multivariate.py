@@ -79,6 +79,7 @@ __all__ = [
     "MvNormal",
     "ZeroSumNormal",
     "MvStudentT",
+    "MvSkewNormal",
     "Dirichlet",
     "Multinomial",
     "DirichletMultinomial",
