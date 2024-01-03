@@ -299,12 +299,12 @@ class MvSkewNormalRV(RandomVariable):
             # so that the MvNormal draws and the chisquare draws have the same number of batch dimensions.
             # nu broadcasts mu and cov
             alpha, mu, cov = broadcast_params((alpha, mu, cov), ndims_params=cls.ndims_params)
-            
+
         aCa = alpha @ cov @ alpha
         delta = (1/ np.sqrt(1 + aCa)) * cov @ alpha
         cov_star = np.block([[np.ones(1), delta],
                         [delta[:, None], cov]])
-        mv_samples = multivariate_normal.rng_fn(rng=rng, mean=np.zeros_like(mu), cov=cov_star, size=size)
+        mv_samples = multivariate_normal.rng_fn(rng=rng, mean=np.zeros_like(len(mu) + 1), cov=cov_star, size=size)
         
         x0 = mv_samples[:, 0]
         x1 = mv_samples[:, 1:]
