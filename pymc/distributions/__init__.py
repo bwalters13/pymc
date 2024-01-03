@@ -95,6 +95,7 @@ from pymc.distributions.multivariate import (
     MatrixNormal,
     Multinomial,
     MvNormal,
+    MvSkewNormal,
     MvStudentT,
     OrderedMultinomial,
     StickBreakingWeights,
