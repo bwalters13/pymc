@@ -278,11 +278,11 @@ class MvNormal(Continuous):
         )
     
 class MvSkewNormalRV(RandomVariable):
-    name = "multivariate_studentt"
+    name = "multivariate_skewnormal"
     ndim_supp = 1
     ndims_params = [0, 1, 2]
     dtype = "floatX"
-    _print_name = ("MvStudentT", "\\operatorname{MvStudentT}")
+    _print_name = ("MvSkewNormal", "\\operatorname{MvSkewNormal}")
 
     def _supp_shape_from_params(self, dist_params, param_shapes=None):
         return supp_shape_from_ref_param_shape(
