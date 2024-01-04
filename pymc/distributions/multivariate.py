@@ -304,7 +304,6 @@ class MvSkewNormalRV(RandomVariable):
         delta = (1/ np.sqrt(1 + aCa)) * cov @ alpha
         cov_star = np.block([[np.ones(1), delta],
                         [delta[:, None], cov]])
-        sample_mu = np.concatenate((np.zeros_like(mu), np.zeros(1))
         mv_samples = multivariate_normal.rng_fn(rng=rng, mean=np.zeros(mu.eval().shape[0] + 1), cov=cov_star, size=size)
         
         x0 = mv_samples[:, 0]
