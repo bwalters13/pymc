@@ -442,7 +442,7 @@ class MvSkewNormal(Continuous):
 
         std_devs = pm.math.sqrt(pt.diag(scale)) + 0.1
 
-        omega = pt.diag(std_devs)
+        omega = pt.diagonal(std_devs)
 
         # # Calculate the log probability of the value under the multivariate normal distribution
         log_prob_mv_normal = pm.logp(mv_normal, value - mu)
@@ -460,7 +460,13 @@ class MvSkewNormal(Continuous):
         log_cdf_std_normal = pm.logcdf(std_normal, arg_cdf)
 
         # Return the log of the skew-normal density
-        return pm.math.log(2) + log_prob_mv_normal + log_cdf_std_normal
+        res = pm.math.log(2) + log_prob_mv_normal + log_cdf_std_normal
+        ok = pt.all(omega > 0, axis=-1)
+        return check_parameters(
+            res,
+            ok,
+            msg="Covariance must be positive definite",
+        )
 
 
 mv_studentt = MvStudentTRV()
